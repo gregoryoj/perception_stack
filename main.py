@@ -20,12 +20,10 @@ def main():
     image_to_display = 250
     # load in point clouds
     path_to_data = "dataset/PointClouds"
-    files = os.listdir(path_to_data)
+    files = sorted(os.listdir(path_to_data), key=lambda x: int(x.split(".")[0]))
     point_clouds = []
-    last_point_clouds = []
-
-    last_point_clouds.append(o3d.io.read_point_cloud(path_to_data + '/' + files[0]))
-    last_point_clouds.append(o3d.io.read_point_cloud(path_to_data + '/' + files[5]))
+    last_point_clouds = [o3d.io.read_point_cloud(path_to_data + '/' + files[0]),
+                         o3d.io.read_point_cloud(path_to_data + '/' + files[5])]
 
     count = 0
 
