@@ -8,7 +8,7 @@ import open3d.geometry
 
 DISTANCE_TO_LAST_PCD = 0.001
 COLORS = ["cool", "Wistia", "Greens", "winter", "PuOr", "seismic"]
-
+PRINT_DEBUG = True
 
 def preprocessing(point_clouds):  # todo fix the first frame having 0 points
     point_clouds = point_clouds[1:]
@@ -45,8 +45,8 @@ def visualization(frame_count, car_group_clusters, car_clusters):
         vis.clear_geometries()
         for car_cluster in car_clusters[i]:
             vis.add_geometry(car_cluster)
-        for car_group_cluster in car_group_clusters[i]:
-            vis.add_geometry(car_group_cluster)
+        #for car_group_cluster in car_group_clusters[i]:
+        #    vis.add_geometry(car_group_cluster)
         vis.poll_events()
         vis.update_renderer()
         time.sleep(0.10)
@@ -57,8 +57,8 @@ def visualization(frame_count, car_group_clusters, car_clusters):
 def predict_next_bbox(previous_bbox, current_bbox):
     difference_min = current_bbox.min_bound - previous_bbox.min_bound
     difference_max = current_bbox.max_bound - previous_bbox.max_bound
-    estimated_next_min = current_bbox.min_bound + difference_min * 1.1  # lenience factor
-    estimated_next_max = current_bbox.max_bound + difference_max * 1.1  # lenience factor
+    estimated_next_min = current_bbox.min_bound + difference_min * 1.25  # lenience factor
+    estimated_next_max = current_bbox.max_bound + difference_max * 1.25  # lenience factor
     predicted_next_min = []
     predicted_next_max = []
     for i in range(3):
@@ -70,14 +70,14 @@ def predict_next_bbox(previous_bbox, current_bbox):
 def valid_bbox(bbox):
     min_bound = bbox.min_bound
     max_bound = bbox.max_bound
-    if (min_bound != 0).all() and (max_bound != 0).all():
+    if (min_bound != 0).all() and (max_bound != 0).all() and (min_bound != max_bound).any():
         return True
     return False
 
 
 def main():
-    start_image = 1
-    end_image = 10
+    start_image = 458
+    end_image = 499
 
     # load in point clouds
     path_to_data = "dataset/PointClouds"
@@ -113,16 +113,39 @@ def main():
     bounding_boxes_of_cars = []
     individual_car_clusters = []
     for i in range(0, len(point_clouds)):
-        # epsilon = 1.2
-        # min_points_per_cluster = 5
         pcd = point_clouds[i]
 
         car_clusters = []
         bounding_boxes = []
+
         car_group_clustering = clustering(pcd, epsilon, min_points_per_cluster)
-        print("Frame 1")
-        print("There were " + str(len(car_group_clustering)) + " clusters detected")
+
+        if epsilon == 10 and i > 415: epsilon = 4.5
+
+        epsilon = 3
+        min_points_per_cluster = 5
+        o3d.visualization.draw_geometries([pcd])
+        car_group_clustering = clustering(pcd, epsilon, min_points_per_cluster)[2:]
+        return
+
+        tested_epsilon_value = []
+
+        while len(car_group_clustering) != 3:
+            print(epsilon)
+            while epsilon in tested_epsilon_value:
+                if len(car_group_clustering) < 3 and round(epsilon - 0.05) not in tested_epsilon_value and epsilon - 0.05 > 0:
+                    epsilon = round(epsilon - 0.05, 2)
+                elif len(car_group_clustering) > 3 or epsilon <= 0:
+                    epsilon = round(epsilon + 0.05, 2)
+
+            car_group_clustering = clustering(pcd, epsilon, min_points_per_cluster)
+            tested_epsilon_value.append(epsilon)
+
+        if PRINT_DEBUG:
+            print("Frame " + str(i + 1))
+            print("There were " + str(len(car_group_clustering)) + " clusters detected")
         count = 0
+        individual_cars = []
         for car_group_cluster in car_group_clustering:
             if i > 1:
                 previous_bbox_1 = bounding_boxes_of_cars[i-2][count]
@@ -132,26 +155,36 @@ def main():
                 predicted_next_bbox_1 = predict_next_bbox(previous_bbox_1, current_bbox_1)
                 predicted_next_bbox_2 = predict_next_bbox(previous_bbox_2, current_bbox_2)
                 count += 2
-                if (valid_bbox(predicted_next_bbox_1) and valid_bbox(predicted_next_bbox_2)):
+                if valid_bbox(predicted_next_bbox_1) and valid_bbox(predicted_next_bbox_2):
                     car_1 = open3d.geometry.PointCloud.crop(car_group_cluster, predicted_next_bbox_1)
                     car_2 = open3d.geometry.PointCloud.crop(car_group_cluster, predicted_next_bbox_2)
                     individual_cars = [car_1, car_2]
-                else:
-                    individual_cars = clustering(car_group_cluster, 2, 2)
-            else:
-                individual_cars = clustering(car_group_cluster, 2, 2)
+            no_cars_found = len(individual_cars) == 0 or len(individual_cars[0].points) == 0
+            no_cars_found = no_cars_found or len(individual_cars) == 2 and len(individual_cars[1].points) == 0
+            if len(individual_cars) == 0 or no_cars_found:
+                for j in range(0, 11):
+                    individual_cars = clustering(car_group_cluster, 2 - j/10, 1)
+                    if len(individual_cars) == 2:
+                        break
+            if len(individual_cars) != 2:
+                bounding_boxes.append(predicted_next_bbox_1)
+                bounding_boxes.append(predicted_next_bbox_2)
 
             for car in individual_cars[:2]:
                 car_clusters.append(car)
-                bbox = o3d.geometry.AxisAlignedBoundingBox.create_from_points(
-                    o3d.utility.Vector3dVector(np.asarray(car.points)))
-                bounding_boxes.append(bbox)
+                if len(individual_cars) == 2:
+                    bbox = o3d.geometry.AxisAlignedBoundingBox.create_from_points(
+                        o3d.utility.Vector3dVector(np.asarray(car.points)))
+                    bounding_boxes.append(bbox)
 
-        print("There were " + str(len(car_clusters)) + " cars detected")
+        if PRINT_DEBUG:
+            print("There were " + str(len(car_clusters)) + " cars detected")
+            print("There were " + str(len(bounding_boxes)) + " bounding boxes detected")
         car_group_clusters.append(car_group_clustering)
         individual_car_clusters.append(car_clusters)
         bounding_boxes_of_cars.append(bounding_boxes)
-        print()
+        if PRINT_DEBUG:
+            print()
         
     visualization(end_image - start_image, car_group_clusters, individual_car_clusters)
 
