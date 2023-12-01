@@ -66,6 +66,15 @@ def predict_next_bbox(previous_bbox, current_bbox):
         predicted_next_max.append(max(estimated_next_min[i], estimated_next_max[i]))
     return open3d.geometry.AxisAlignedBoundingBox(np.asarray(predicted_next_min), np.asarray(predicted_next_max))
 
+
+def valid_bbox(bbox):
+    min_bound = bbox.min_bound
+    max_bound = bbox.max_bound
+    if (min_bound != 0).all() and (max_bound != 0).all():
+        return True
+    return False
+
+
 def main():
     start_image = 1
     end_image = 10
@@ -111,14 +120,11 @@ def main():
         car_clusters = []
         bounding_boxes = []
         car_group_clustering = clustering(pcd, epsilon, min_points_per_cluster)
+        print("Frame 1")
         print("There were " + str(len(car_group_clustering)) + " clusters detected")
         count = 0
         for car_group_cluster in car_group_clustering:
-            if i <= 1:
-                individual_cars = clustering(car_group_cluster, 2, 2)
-                predicted_next_bbox_1 = None
-                predicted_next_bbox_2 = None
-            else:
+            if i > 1:
                 previous_bbox_1 = bounding_boxes_of_cars[i-2][count]
                 current_bbox_1 = bounding_boxes_of_cars[i-1][count]
                 previous_bbox_2 = bounding_boxes_of_cars[i-2][count + 1]
@@ -126,9 +132,14 @@ def main():
                 predicted_next_bbox_1 = predict_next_bbox(previous_bbox_1, current_bbox_1)
                 predicted_next_bbox_2 = predict_next_bbox(previous_bbox_2, current_bbox_2)
                 count += 2
-                car_1 = open3d.geometry.PointCloud.crop(car_group_cluster, predicted_next_bbox_1)
-                car_2 = open3d.geometry.PointCloud.crop(car_group_cluster, predicted_next_bbox_2)
-                individual_cars = [car_1, car_2]
+                if (valid_bbox(predicted_next_bbox_1) and valid_bbox(predicted_next_bbox_2)):
+                    car_1 = open3d.geometry.PointCloud.crop(car_group_cluster, predicted_next_bbox_1)
+                    car_2 = open3d.geometry.PointCloud.crop(car_group_cluster, predicted_next_bbox_2)
+                    individual_cars = [car_1, car_2]
+                else:
+                    individual_cars = clustering(car_group_cluster, 2, 2)
+            else:
+                individual_cars = clustering(car_group_cluster, 2, 2)
 
             for car in individual_cars[:2]:
                 car_clusters.append(car)
@@ -140,7 +151,8 @@ def main():
         car_group_clusters.append(car_group_clustering)
         individual_car_clusters.append(car_clusters)
         bounding_boxes_of_cars.append(bounding_boxes)
-
+        print()
+        
     visualization(end_image - start_image, car_group_clusters, individual_car_clusters)
 
 
