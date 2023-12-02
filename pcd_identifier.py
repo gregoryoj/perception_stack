@@ -29,6 +29,7 @@ def clustering(pcd, epsilon, min_points):
         clusters.append(cluster)
     return clusters
 
+
 def bbox_to_corner_points(bbox):
     corner_boxes = np.zeros((8, 3))
     translation = bbox.get_center()
@@ -60,7 +61,7 @@ def visualization(point_clouds, car_points_per_frame, bounding_boxes):
     for i in range(0, len(car_points_per_frame)):
         vis.clear_geometries()
         vis.add_geometry(point_clouds[i])
-        #for car_cluster in car_points_per_frame[i]:
+        # for car_cluster in car_points_per_frame[i]:
         #    vis.add_geometry(car_cluster)
         for bounding_box in bounding_boxes[i]:
             vis.add_geometry(bounding_box)
@@ -189,7 +190,8 @@ def get_frame_info_with_clustering(point_clouds):
         car_points = []
         for j in range(0, 6):
             old_car_bbox = car_bounding_boxes_per_frame[count][j]
-            predicted_current_bbox = old_car_bbox.get_axis_aligned_bounding_box().translate(car_movements_per_frame[count][j])
+            predicted_current_bbox = old_car_bbox.get_axis_aligned_bounding_box().translate(
+                car_movements_per_frame[count][j])
             standardize_bbox_y(predicted_current_bbox)
             cropped_pcd = pcd.crop(predicted_current_bbox)
             if len(cropped_pcd.points) == 0:
@@ -215,25 +217,50 @@ def extrapolate_information(car_movements, car_bboxes, car_points):
     for i in range(0, 20):
         car_movement, car_bbox, car_point = [], [], []
         for k in range(0, 6):
-            average_movement = car_movements[479+i][k]
+            average_movement = car_movements[479 + i][k]
             for j in range(1, 10):
-                average_movement += car_movements[479+i-j][k]
-            average_movement = average_movement/10
+                average_movement += car_movements[479 + i - j][k]
+            average_movement = average_movement / 10
             car_movement.append(average_movement)
-            car_bbox.append(car_bboxes[479+i][k].translate(average_movement))
-            car_point.append(car_points[479+i][k].translate(average_movement))
+            car_bbox.append(car_bboxes[479 + i][k].translate(average_movement))
+            car_point.append(car_points[479 + i][k].translate(average_movement))
         car_movements.append(car_movement)
         car_bboxes.append(car_bbox)
         car_points.append(car_point)
 
     return car_movements, car_bboxes, car_points
 
-def main():
+
+def categorize_information(car_movements, car_bboxes):
+    information = []
+    vehicle_id_start = 146
+    for i in range(0, 500):
+        for j in range(0, 6):
+            bbox = car_bboxes[i][j]
+            position = bbox.get_center()
+            bbox_min = bbox.min_bound
+            bbox_max = bbox.max_bound
+            information.append(i)
+            information.append(vehicle_id_start - j)
+            information.append(position[0])
+            information.append(position[1])
+            information.append(position[2])
+            for k in range(0, 3):
+                information.append(bbox_min[k])
+                information.append(bbox_max[k])
+            movement = car_movements[i][j]
+            for k in range(0, 3):
+                information.append(movement[k])
+    return information
+
+
+def identify_cars_from_point_cloud():
     point_clouds = process_point_clouds("dataset/PointClouds")
 
     processed_point_clouds = preprocessing(point_clouds)
 
-    car_movements, car_bboxes, car_points = get_frame_info_with_clustering(processed_point_clouds)  # all of the per frame info
+    car_movements, car_bboxes, car_points = get_frame_info_with_clustering(
+        processed_point_clouds)  # all of the per frame info
 
     car_movements.reverse()
     car_bboxes.reverse()
@@ -242,6 +269,5 @@ def main():
     car_movements, car_bboxes, car_points = extrapolate_information(car_movements, car_bboxes, car_points)
     visualization(point_clouds, car_points, car_bboxes)
 
-
-if __name__ == "__main__":
-    main()
+    print(categorize_information(car_movements, car_bboxes))
+    return categorize_information(car_movements, car_bboxes)
