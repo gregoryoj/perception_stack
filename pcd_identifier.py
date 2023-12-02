@@ -192,6 +192,7 @@ def categorize_information(car_movements, car_bboxes):
     vehicle_id_start = 146
 
     for i in range(0, 500):
+        data = []
         car_bboxes[i].reverse()
         car_movements[i].reverse()
         car_bboxes[i][1], car_bboxes[i][2] = car_bboxes[i][2], car_bboxes[i][1]
@@ -203,16 +204,18 @@ def categorize_information(car_movements, car_bboxes):
             bbox_max = bbox.max_bound
             movement = car_movements[i][j]
 
-            information.append(i)
-            information.append(vehicle_id_start - j)
-            information.append(position[0])
-            information.append(position[1])
-            information.append(position[2])
+            data.append(i)
+            data.append(vehicle_id_start - j)
+            data.append(position[0])
+            data.append(position[1])
+            data.append(position[2])
             for k in range(0, 3):
-                information.append(bbox_min[k])
-                information.append(bbox_max[k])
+                data.append(bbox_min[k])
+                data.append(bbox_max[k])
             for k in range(0, 3):
-                information.append(movement[k])
+                data.append(movement[k])
+
+        information.append(data)
 
     return information
 
