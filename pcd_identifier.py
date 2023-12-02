@@ -244,9 +244,9 @@ def identify_cars_from_point_cloud():
     car_bboxes.reverse()
     car_points.reverse()
 
+    y_bbox_correction(point_clouds, car_bboxes)
+    
     car_movements, car_bboxes, car_points = generate_information(car_movements, car_bboxes, car_points)
     visualization(point_clouds, car_points, car_bboxes)
 
-    y_bbox_correction(point_clouds, car_bboxes)
-    print(categorize_information(car_movements, car_bboxes))
     return categorize_information(car_movements, car_bboxes)
