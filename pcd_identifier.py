@@ -54,7 +54,7 @@ def visualization(point_clouds, car_points_per_frame, bounding_boxes):
             color_count += 1
         vis.add_geometry(point_clouds[i])
         ctr = vis.get_view_control()
-        ctr.set_zoom(0.1)
+        ctr.set_zoom(0.2)
         vis.poll_events()
         vis.update_renderer()
         time.sleep(0.01)
@@ -194,6 +194,7 @@ def categorize_information(car_movements, car_bboxes):
     for i in range(0, 500):
         car_bboxes[i].reverse()
         car_movements[i].reverse()
+        car_bboxes[i][1], car_bboxes[i][2] = car_bboxes[i][2], car_bboxes[i][1]
 
         for j in range(0, 6):
             bbox = car_bboxes[i][j]
@@ -216,6 +217,18 @@ def categorize_information(car_movements, car_bboxes):
     return information
 
 
+def y_bbox_correction(point_clouds, car_bboxes):
+    for i in range(0, len(car_bboxes)):
+        for j in range(0, 6):
+            car_points = point_clouds[i].crop(car_bboxes[i][j])
+            if len(car_points.points) != 0:
+                car_points_bbox = car_points.get_axis_aligned_bounding_box()
+                car_bboxes[i][j].min_bound = (car_bboxes[i][j].min_bound[0], car_bboxes[i][j].min_bound[1], car_points_bbox.min_bound[2])
+                car_bboxes[i][j].max_bound = (car_bboxes[i][j].max_bound[0], car_bboxes[i][j].max_bound[1], car_points_bbox.max_bound[2])
+            else:
+                car_bboxes[i][j].min_bound = (car_bboxes[i][j].min_bound[0], car_bboxes[i][j].min_bound[1], 0)
+                car_bboxes[i][j].max_bound = (car_bboxes[i][j].max_bound[0], car_bboxes[i][j].max_bound[1], 0.2)
+
 def identify_cars_from_point_cloud():
     point_clouds = process_point_clouds("dataset/PointClouds")
 
@@ -231,8 +244,6 @@ def identify_cars_from_point_cloud():
     car_movements, car_bboxes, car_points = generate_information(car_movements, car_bboxes, car_points)
     visualization(point_clouds, car_points, car_bboxes)
 
+    y_bbox_correction(point_clouds, car_bboxes)
     print(categorize_information(car_movements, car_bboxes))
     return categorize_information(car_movements, car_bboxes)
-
-
-identify_cars_from_point_cloud()
