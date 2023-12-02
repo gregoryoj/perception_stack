@@ -147,8 +147,8 @@ for frame_number in range ( start_index, end_index ):
     pred_poses = []
     pred_mvecs = []
     for index, row in pred_frame.iterrows():
-        pred_pose = [row["position_x"], row["position_y"], row["position_z"]]
-        pred_mvec = [row["mvec_x"], row["mvec_y"], row["mvec_z"]]
+        pred_pose = [row["Pos_X"], row["Pos_Y"], row["Pos_Z"]]
+        pred_mvec = [row["MVec_X"], row["MVec_Y"], row["MVec_Z"]]
         pred_poses.append(pred_pose)
         pred_mvecs.append(pred_mvec)
 
