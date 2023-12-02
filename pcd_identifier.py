@@ -30,29 +30,9 @@ def clustering(pcd, epsilon, min_points):
     return clusters
 
 
-def bbox_to_corner_points(bbox):
-    corner_boxes = np.zeros((8, 3))
-    translation = bbox.get_center()
-    extent = bbox.get_extent()
-    h, w, l = extent / 2
-
-    bounding_box = np.array([
-        [-l, -l, l, l, -l, -l, l, l],
-        [w, -w, -w, w, w, -w, -w, w],
-        [-h, -h, -h, -h, h, h, h, h]])
-
-    rotation_matrix = np.array([
-        [np.cos(0), -np.sin(0), 0.0],
-        [np.sin(0), np.cos(0), 0.0],
-        [0.0, 0.0, 1.0]])
-
-    eight_points = np.tile(translation, (8, 1))
-    corner_box = np.dot(rotation_matrix, bounding_box) + eight_points.transpose()
-    return corner_box.transpose()
-
-
 def visualization(point_clouds, car_points_per_frame, bounding_boxes):
     # visualization step
+    print("visualizing")
     vis = o3d.visualization.Visualizer()
     vis.create_window()
 
@@ -60,43 +40,29 @@ def visualization(point_clouds, car_points_per_frame, bounding_boxes):
 
     for i in range(0, len(car_points_per_frame)):
         vis.clear_geometries()
-        vis.add_geometry(point_clouds[i])
-        # for car_cluster in car_points_per_frame[i]:
-        #    vis.add_geometry(car_cluster)
+        color_count = 0
         for bounding_box in bounding_boxes[i]:
             vis.add_geometry(bounding_box)
+            car_points = point_clouds[i].crop(bounding_box)
+            if len(car_points.points) != 0:
+                distances = np.asarray(point_clouds[i].compute_point_cloud_distance(car_points))
+                indices_of_non_cropped_points = np.where(distances > 0.00001)[0]
+                point_clouds[i] = point_clouds[i].select_by_index(indices_of_non_cropped_points)
+            colors = plt.get_cmap(COLORS[color_count % 6])(np.ones(len(car_points.points)))[:, :3]
+            car_points.colors = o3d.utility.Vector3dVector(colors)
+            vis.add_geometry(car_points)
+            color_count += 1
+        vis.add_geometry(point_clouds[i])
         ctr = vis.get_view_control()
         ctr.set_zoom(0.1)
         vis.poll_events()
         vis.update_renderer()
-        time.sleep(0.1)
+        time.sleep(0.01)
 
     vis.run()
 
 
-def predict_next_bbox(previous_bbox, current_bbox):
-    difference_min = current_bbox.min_bound - previous_bbox.min_bound
-    difference_max = current_bbox.max_bound - previous_bbox.max_bound
-    estimated_next_min = current_bbox.min_bound + difference_min * 1.25  # lenience factor
-    estimated_next_max = current_bbox.max_bound + difference_max * 1.25  # lenience factor
-    predicted_next_min = []
-    predicted_next_max = []
-    for i in range(3):
-        predicted_next_min.append(min(estimated_next_min[i], estimated_next_max[i]))
-        predicted_next_max.append(max(estimated_next_min[i], estimated_next_max[i]))
-    return o3d.geometry.AxisAlignedBoundingBox(np.asarray(predicted_next_min), np.asarray(predicted_next_max))
-
-
-def valid_bbox(bbox):
-    min_bound = bbox.min_bound
-    max_bound = bbox.max_bound
-    if (min_bound != 0).all() and (max_bound != 0).all() and (min_bound != max_bound).any():
-        return True
-    return False
-
-
-def preprocessing(point_clouds):  # todo fix the first frame having 0 points
-
+def preprocessing(point_clouds):
     processed_point_clouds = []
     last_point_clouds = [point_clouds[0], point_clouds[DISTANCE_FRAME]]
 
@@ -133,30 +99,21 @@ def process_point_clouds(directory_path):
     return point_clouds
 
 
-def calculate_change_in_movement(initial_bbox, moved_bbox):
-    change_in_min = moved_bbox.min_bound - initial_bbox.min_bound
-    change_in_max = moved_bbox.min_bound - initial_bbox.min_bound
-    return (change_in_min, change_in_max)
-
-
-def estimate_next_bbox(old_bbox, change_in_movement):
-    leniency = 1.25
-    new_min = (old_bbox.min_bound + change_in_movement[0]) * leniency
-    new_max = (old_bbox.max_bound + change_in_movement[1]) * leniency
-    predicted_next_min = []
-    predicted_next_max = []
-    for i in range(3):
-        predicted_next_min.append(min(new_min[i], new_max[i]))
-        predicted_next_max.append(max(new_min[i], new_max[i]))
-    predicted_next_min[2] = -1
-    predicted_next_max[2] = 5
-    return o3d.geometry.AxisAlignedBoundingBox(np.asarray(predicted_next_min), np.asarray(predicted_next_max))
-
-
 def standardize_bbox_y(bbox):
     bbox.min_bound = np.asarray([bbox.min_bound[0], bbox.min_bound[1], -1])
     bbox.max_bound = np.asarray([bbox.max_bound[0], bbox.max_bound[1], 5])
 
+
+def estimate_movement(car_movements, j, precision):
+    movement = np.asarray(car_movements[len(car_movements)-1][j])
+    count = 1
+    for i in range(1, precision):
+        if len(car_movements)-1-i > 0:
+            movement = movement + car_movements[len(car_movements)-1-i][j]
+            count += 1
+        else:
+            break
+    return movement/count
 
 def get_frame_info_with_clustering(point_clouds):
     epsilon = 10
@@ -190,8 +147,7 @@ def get_frame_info_with_clustering(point_clouds):
         car_points = []
         for j in range(0, 6):
             old_car_bbox = car_bounding_boxes_per_frame[count][j]
-            predicted_current_bbox = old_car_bbox.get_axis_aligned_bounding_box().translate(
-                car_movements_per_frame[count][j])
+            predicted_current_bbox = old_car_bbox.get_axis_aligned_bounding_box().translate(estimate_movement(car_movements_per_frame, j, 5))
             standardize_bbox_y(predicted_current_bbox)
             cropped_pcd = pcd.crop(predicted_current_bbox)
             if len(cropped_pcd.points) == 0:
@@ -213,7 +169,7 @@ def get_frame_info_with_clustering(point_clouds):
     return car_movements_per_frame, car_bounding_boxes_per_frame, car_points_per_frame
 
 
-def extrapolate_information(car_movements, car_bboxes, car_points):
+def generate_information(car_movements, car_bboxes, car_points):
     for i in range(0, 20):
         car_movement, car_bbox, car_point = [], [], []
         for k in range(0, 6):
@@ -234,12 +190,18 @@ def extrapolate_information(car_movements, car_bboxes, car_points):
 def categorize_information(car_movements, car_bboxes):
     information = []
     vehicle_id_start = 146
+
     for i in range(0, 500):
+        car_bboxes[i].reverse()
+        car_movements[i].reverse()
+
         for j in range(0, 6):
             bbox = car_bboxes[i][j]
             position = bbox.get_center()
             bbox_min = bbox.min_bound
             bbox_max = bbox.max_bound
+            movement = car_movements[i][j]
+
             information.append(i)
             information.append(vehicle_id_start - j)
             information.append(position[0])
@@ -248,9 +210,9 @@ def categorize_information(car_movements, car_bboxes):
             for k in range(0, 3):
                 information.append(bbox_min[k])
                 information.append(bbox_max[k])
-            movement = car_movements[i][j]
             for k in range(0, 3):
                 information.append(movement[k])
+
     return information
 
 
@@ -266,8 +228,11 @@ def identify_cars_from_point_cloud():
     car_bboxes.reverse()
     car_points.reverse()
 
-    car_movements, car_bboxes, car_points = extrapolate_information(car_movements, car_bboxes, car_points)
+    car_movements, car_bboxes, car_points = generate_information(car_movements, car_bboxes, car_points)
     visualization(point_clouds, car_points, car_bboxes)
 
     print(categorize_information(car_movements, car_bboxes))
     return categorize_information(car_movements, car_bboxes)
+
+
+identify_cars_from_point_cloud()
